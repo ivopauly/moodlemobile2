@@ -13,8 +13,11 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
+import { TranslateService } from '@ngx-translate/core';
 import { CoreFileProvider } from '@providers/file';
 import { CoreFileUploaderProvider } from '@core/fileuploader/providers/fileuploader';
+import { CoreSitesProvider } from '@providers/sites';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUserProvider } from '@core/user/providers/user';
 import { AddonModForumProvider } from './forum';
 import { AddonModForumOfflineProvider } from './offline';
@@ -24,9 +27,13 @@ import { AddonModForumOfflineProvider } from './offline';
  */
 @Injectable()
 export class AddonModForumHelperProvider {
-    constructor(private fileProvider: CoreFileProvider,
+    constructor(private translate: TranslateService,
+            private fileProvider: CoreFileProvider,
+            private sitesProvider: CoreSitesProvider,
             private uploaderProvider: CoreFileUploaderProvider,
+            private timeUtils: CoreTimeUtilsProvider,
             private userProvider: CoreUserProvider,
+            private forumProvider: AddonModForumProvider,
             private forumOffline: AddonModForumOfflineProvider) {}
 
     /**
@@ -54,7 +61,8 @@ export class AddonModForumHelperProvider {
                 postread: false,
                 subject: offlineReply.subject,
                 totalscore: 0,
-                userid: offlineReply.userid
+                userid: offlineReply.userid,
+                isprivatereply: offlineReply.options && offlineReply.options.private
             },
             promises = [];
 
@@ -119,6 +127,60 @@ export class AddonModForumHelperProvider {
     }
 
     /**
+     * Returns the availability message of the given forum.
+     *
+     * @param {any} forum Forum instance.
+     * @return {string} Message or null if the forum has no cut-off or due date.
+     */
+    getAvailabilityMessage(forum: any): string {
+        if (this.isCutoffDateReached(forum)) {
+            return this.translate.instant('addon.mod_forum.cutoffdatereached');
+        } else if (this.isDueDateReached(forum)) {
+            const dueDate = this.timeUtils.userDate(forum.duedate * 1000);
+
+            return this.translate.instant('addon.mod_forum.thisforumisdue', {$a: dueDate});
+        } else if (forum.duedate > 0) {
+            const dueDate = this.timeUtils.userDate(forum.duedate * 1000);
+
+            return this.translate.instant('addon.mod_forum.thisforumhasduedate', {$a: dueDate});
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Get a forum discussion by id.
+     *
+     * This function is inefficient because it needs to fetch all discussion pages in the worst case.
+     *
+     * @param {number} forumId Forum ID.
+     * @param {number} discussionId Discussion ID.
+     * @param {string} [siteId] Site ID. If not defined, current site.
+     * @return {Promise<any>} Promise resolved with the discussion data.
+     */
+    getDiscussionById(forumId: number, discussionId: number, siteId?: string): Promise<any> {
+        siteId = siteId || this.sitesProvider.getCurrentSiteId();
+
+        const findDiscussion = (page: number): Promise<any> => {
+            return this.forumProvider.getDiscussions(forumId, undefined, page, false, siteId).then((response) => {
+                if (response.discussions && response.discussions.length > 0) {
+                    const discussion = response.discussions.find((discussion) => discussion.id == discussionId);
+                    if (discussion) {
+                        return discussion;
+                    }
+                    if (response.canLoadMore) {
+                        return findDiscussion(page + 1);
+                    }
+                }
+
+                return Promise.reject(null);
+            });
+        };
+
+        return findDiscussion(0);
+    }
+
+    /**
      * Get a list of stored attachment files for a new discussion. See AddonModForumHelper#storeNewDiscussionFiles.
      *
      * @param  {number} forumId     Forum ID.
@@ -164,7 +226,35 @@ export class AddonModForumHelperProvider {
             return true;
         }
 
+        if (post.isprivatereply != original.isprivatereply) {
+            return true;
+        }
+
         return this.uploaderProvider.areFileListDifferent(post.files, original.files);
+    }
+
+    /**
+     * Is the cutoff date for the forum reached?
+     *
+     * @param {any} forum Forum instance.
+     * @return {boolean}
+     */
+    isCutoffDateReached(forum: any): boolean {
+        const now = Date.now() / 1000;
+
+        return forum.cutoffdate > 0 && forum.cutoffdate < now;
+    }
+
+    /**
+     * Is the due date for the forum reached?
+     *
+     * @param {any} forum Forum instance.
+     * @return {boolean}
+     */
+    isDueDateReached(forum: any): boolean {
+        const now = Date.now() / 1000;
+
+        return forum.duedate > 0 && forum.duedate < now;
     }
 
     /**

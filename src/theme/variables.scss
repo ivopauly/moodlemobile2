@@ -126,6 +126,7 @@ $popover-width: 280px !default;
 $item-divider-background: $gray-lighter !default;
 $item-divider-color: $black !default;
 
+$core-star-color: $core-color !default;
 
 // Moodle Mobile variables
 // --------------------------------------------------
@@ -262,6 +263,8 @@ $core-user-profile-communication-icons-color: $core-color !default;
 $core-rte-min-height: 80px;
 
 $core-toolbar-button-image-width: 32px;
+
+$core-text-hightlight-background-color: lighten($blue, 40%) !default;
 
 // Timer variables.
 $core-timer-warn-color:     $red !default;

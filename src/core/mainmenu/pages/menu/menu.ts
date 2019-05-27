@@ -19,6 +19,8 @@ import { CoreEventsProvider } from '@providers/events';
 import { CoreIonTabsComponent } from '@components/ion-tabs/ion-tabs';
 import { CoreMainMenuProvider } from '../../providers/mainmenu';
 import { CoreMainMenuDelegate, CoreMainMenuHandlerToDisplay } from '../../providers/delegate';
+import { CoreContentLinksDelegate } from '@core/contentlinks/providers/delegate';
+import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
 
 /**
  * Page that displays the main menu of the app.
@@ -30,19 +32,24 @@ import { CoreMainMenuDelegate, CoreMainMenuHandlerToDisplay } from '../../provid
 })
 export class CoreMainMenuPage implements OnDestroy {
     tabs: CoreMainMenuHandlerToDisplay[] = [];
+    allHandlers: CoreMainMenuHandlerToDisplay[];
     loaded = false;
     redirectPage: string;
     redirectParams: any;
     showTabs = false;
+    tabsPlacement = 'bottom';
 
     protected subscription;
     protected redirectObs: any;
     protected pendingRedirect: any;
+    protected urlToOpen: string;
 
     @ViewChild('mainTabs') mainTabs: CoreIonTabsComponent;
 
     constructor(private menuDelegate: CoreMainMenuDelegate, private sitesProvider: CoreSitesProvider, navParams: NavParams,
-            private navCtrl: NavController, private eventsProvider: CoreEventsProvider, private cdr: ChangeDetectorRef) {
+            private navCtrl: NavController, private eventsProvider: CoreEventsProvider, private cdr: ChangeDetectorRef,
+            private mainMenuProvider: CoreMainMenuProvider, private linksDelegate: CoreContentLinksDelegate,
+            private linksHelper: CoreContentLinksHelperProvider) {
 
         // Check if the menu was loaded with a redirect.
         const redirectPage = navParams.get('redirectPage');
@@ -52,6 +59,8 @@ export class CoreMainMenuPage implements OnDestroy {
                 redirectParams: navParams.get('redirectParams')
             };
         }
+
+        this.urlToOpen = navParams.get('urlToOpen');
     }
 
     /**
@@ -78,10 +87,34 @@ export class CoreMainMenuPage implements OnDestroy {
 
         this.subscription = this.menuDelegate.getHandlers().subscribe((handlers) => {
             // Remove the handlers that should only appear in the More menu.
-            handlers = handlers.filter((handler) => {
+            this.allHandlers = handlers.filter((handler) => {
                 return !handler.onlyInMore;
             });
-            handlers = handlers.slice(0, CoreMainMenuProvider.NUM_MAIN_HANDLERS); // Get main handlers.
+
+            this.initHandlers();
+
+            if (this.loaded && this.pendingRedirect) {
+                // Wait for tabs to be initialized and then handle the redirect.
+                setTimeout(() => {
+                    if (this.pendingRedirect) {
+                        this.handleRedirect(this.pendingRedirect);
+                        delete this.pendingRedirect;
+                    }
+                });
+            }
+        });
+
+        window.addEventListener('resize', this.initHandlers.bind(this));
+    }
+
+    /**
+     * Init handlers on change (size or handlers).
+     */
+    initHandlers(): void {
+        if (this.allHandlers) {
+            this.tabsPlacement = this.mainMenuProvider.getTabPlacement(this.navCtrl);
+
+            const handlers = this.allHandlers.slice(0, this.mainMenuProvider.getNumItems()); // Get main handlers.
 
             // Re-build the list of tabs. If a handler is already in the list, use existing object to prevent re-creating the tab.
             const newTabs = [];
@@ -94,7 +127,30 @@ export class CoreMainMenuPage implements OnDestroy {
                     return tab.title == handler.title && tab.icon == handler.icon;
                 });
 
+                tab ? tab.hide = false : null;
+                handler.hide = false;
+
                 newTabs.push(tab || handler);
+            }
+
+            // Maintain tab in phantom mode in case is not visible.
+            const selectedTab = this.mainTabs.getSelected();
+            if (selectedTab) {
+                const oldTab = this.tabs.find((tab) => {
+                    return tab.page == selectedTab.root && tab.icon == selectedTab.tabIcon;
+                });
+
+                if (oldTab) {
+                    // Check if the selected handler is visible.
+                    const isVisible = newTabs.some((newTab) => {
+                        return oldTab.title == newTab.title && oldTab.icon == newTab.icon;
+                    });
+
+                    if (!isVisible) {
+                        oldTab.hide = true;
+                        newTabs.push(oldTab);
+                    }
+                }
             }
 
             this.tabs = newTabs;
@@ -105,17 +161,18 @@ export class CoreMainMenuPage implements OnDestroy {
             });
 
             this.loaded = this.menuDelegate.areHandlersLoaded();
+        }
 
-            if (this.loaded && this.pendingRedirect) {
-                // Wait for tabs to be initialized and then handle the redirect.
-                setTimeout(() => {
-                    if (this.pendingRedirect) {
-                        this.handleRedirect(this.pendingRedirect);
-                        delete this.pendingRedirect;
-                    }
-                });
-            }
-        });
+        if (this.urlToOpen) {
+            // There's a content link to open.
+            this.linksDelegate.getActionsFor(this.urlToOpen, undefined).then((actions) => {
+                const action = this.linksHelper.getFirstValidAction(actions);
+                if (action && action.sites.length) {
+                    // Action should only have 1 site because we're filtering by username.
+                    action.action(action.sites[0]);
+                }
+            });
+        }
     }
 
     /**
@@ -153,5 +210,6 @@ export class CoreMainMenuPage implements OnDestroy {
     ngOnDestroy(): void {
         this.subscription && this.subscription.unsubscribe();
         this.redirectObs && this.redirectObs.off();
+        window.removeEventListener('resize', this.initHandlers.bind(this));
     }
 }
