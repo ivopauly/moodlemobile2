@@ -103,6 +103,11 @@ ion-app.app-root {
     border: 0;
   }
 
+  .item h2 {
+    text-overflow: inherit;
+    overflow: inherit;
+  }
+
   .core-nav-item-selected, .item.core-nav-item-selected {
     @include core-selected-item($core-splitview-selected);
   }
@@ -982,6 +987,10 @@ ion-app.app-root {
       line-height: 1;
     }
   }
+
+  ion-alert .alert-checkbox-button .alert-checkbox-label {
+    white-space: normal;
+  }
 }
 
 @each $color-name, $color-base, $color-contrast in get-colors($colors) {
@@ -1010,7 +1019,7 @@ body.keyboard-is-open {
     }
   }
 
-  core-ion-tabs .tabbar {
+  core-ion-tabs[tabsplacement="bottom"] .tabbar {
       display: none;
   }
 }

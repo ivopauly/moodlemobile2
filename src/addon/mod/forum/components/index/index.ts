@@ -244,6 +244,9 @@ export class AddonModForumIndexComponent extends CoreCourseModuleMainActivityCom
             this.domUtils.showErrorModalDefault(message, 'addon.mod_forum.errorgetforum', true);
 
             this.loadMoreError = true; // Set to prevent infinite calls with infinite-loading.
+        }).then(() => {
+            // All data obtained, now fill the context menu.
+            this.fillContextMenu(refresh);
         });
     }
 
@@ -472,9 +475,11 @@ export class AddonModForumIndexComponent extends CoreCourseModuleMainActivityCom
                 // If it's a new discussion in tablet mode, try to open it.
                 if (isNewDiscussion && this.splitviewCtrl.isOn()) {
 
-                    if (data.discussionId) {
+                    if (data.discussionIds) {
                         // Discussion sent to server, search it in the list of discussions.
-                        const discussion = this.discussions.find((disc) => { return disc.discussion == data.discussionId; });
+                        const discussion = this.discussions.find((disc) => {
+                            return data.discussionIds.indexOf(disc.discussion) >= 0;
+                        });
                         if (discussion) {
                             this.openDiscussion(discussion);
                         }
